@@ -1,8 +1,11 @@
-# RE-Lab_template
-Template repository for Python projects
+# pvprog
+Algorithms for a forecast-based operation strategy for photovoltaic systems with battery storage to reduce feed-in power.
 
-## Get started
+## Acknowlegdement
+This repository mainly is a translation of the pvprog algorithm (v1.1) from matlab to python.
 
-Simply click on the green `Use this template` button on the left of the `Clone or download` button.
-
-The detailed instructions to create a new repository from this template can be found [here](https://re-lab-template-documentation.readthedocs.io/en/latest/index.html).
+* Original citation: J. Bergner, J. Weniger, T. Tjaden : PVprog-Algorithmus - Algorithmus zur 
+Umsetzung der prognosebasierten Batterieladung für PV-Speichersysteme 
+mit messwertbasierten PV- und Lastprognosen (Version 1.1). 
+Berlin: Hochschule für Technik und Wirtschaft HTW Berlin, 2016
+* Source: https://pvspeicher.htw-berlin.de/veroeffentlichungen/daten/pvprog/
