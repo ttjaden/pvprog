@@ -30,7 +30,7 @@ setup(
     # There are some restrictions on what makes a valid project name
     # specification here:
     # https://packaging.python.org/specifications/core-metadata/#name
-    name="RE-Lab_template",  # Required
+    name="pvprog",  # Required
 
     # Versions should comply with PEP 440:
     # https://www.python.org/dev/peps/pep-0440/
@@ -40,12 +40,12 @@ setup(
     # https://packaging.python.org/en/latest/single_source_version.html
 	# Reset to 0.0.0 when starting a new project, as this version number is the version of
 	# the template itself!
-    version="0.0.1",  # Required
+    version="1.0",  # Required
 
     # This is a one-line description or tagline of what your project does. This
     # corresponds to the "Summary" metadata field:
     # https://packaging.python.org/specifications/core-metadata/#summary
-    description="",  # Optional
+    description="Algorithms for a forecast-based operation strategy for photovoltaic systems with battery storage to reduce feed-in power",  # Optional
 
 	# This should be your name or the name of the organization which owns the
     # project.
@@ -56,16 +56,16 @@ setup(
     author_email='re-lab@hs-emden-leer.de',  # Optional
 
     # This should be a valid link to your project's main homepage.
-    url="https://github.com/RE-Lab-Projects/RE-Lab_template",  # Optional
+    url="https://github.com/RE-Lab-Projects/pvprog",  # Optional
 
     # Examples listed include a pattern for specifying where the package tracks
     # issues, where the source is hosted, where to say thanks to the package
     # maintainers, and where to support the project financially. The key is
     # what's used to render the link text on PyPI.
-    #project_urls={  # Optional
-    #    "Bug Reports": "https://github.com/RE-Lab-Projects/RE-Lab_template/issues",
-    #    "Source": "https://github.com/RE-Lab-Projects/RE-Lab_template",
-    #},
+    project_urls={  # Optional
+        "Bug Reports": "https://github.com/RE-Lab-Projects/pvprog/issues",
+        "Source": "https://github.com/RE-Lab-Projects/pvprog",
+    },
 
 	# #########################
 	# The following option don't need to be changed
