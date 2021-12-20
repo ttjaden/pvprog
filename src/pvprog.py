@@ -217,8 +217,9 @@ class BatProg:
         #Zeitreihe p_pvmax15 zweimal verketten, um zum Ende der Jahressimulation auf die Maximalwerte des Jahresanfangs zurückzugreifen
         p_pvmax15=(np.append(p_pvmax15,p_pvmax15))
         #Messwertbasierte PV-Prognose erstellen: Multiplikation des aktuellen KTF15-Wertes mit dem Verlauf der maximalen PV-Leistung des Prognosehorizonts
+        maxpv=max(p_pv)#maximum value vor p_pv
         for t in range(0,len(p_pvf)):
-            p_pvf[t,:]=np.maximum(0,np.minimum(1,KTF15[t]*(p_pvmax15[t:t+self.tf_prog*4])))
+            p_pvf[t,:]=np.maximum(0,np.minimum(maxpv,KTF15[t]*(p_pvmax15[t:t+self.tf_prog*4])))
         # PV-Prognosen ohne Zahlenwert null setzen
         p_pvf[np.where(np.isnan(p_pvf))]=0
         return(p_pvf)
