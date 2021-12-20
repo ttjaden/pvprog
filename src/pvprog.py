@@ -3,7 +3,9 @@ import numpy as np
 import math
 
 class BatProg:
-    def __init__(self, dt=60, P_stc=5, C_bu=5, P_inv=2.5, p_gfl=0.5, eta_batt=0.95, eta_inv=0.94, tf_past=3, tf_prog=15): 
+    def __init__(self, dt: int = 60, P_stc: int = 5, C_bu: int = 5,
+                 P_inv: float = 2.5, p_gfl: float = 0.5, eta_batt: float = 0.95,
+                 eta_inv: float = 0.94, tf_past: int = 3, tf_prog: int = 15): 
         """
         Some hard coded values.
 
@@ -38,7 +40,7 @@ class BatProg:
         self.tf_past=tf_past
         self.tf_prog=tf_prog
     
-    def batt_sim(self,P_b=0,soc_0=0):
+    def batt_sim(self, P_b: float, soc_0: float):
         """ 
         Simple battery storage model in which conversion losses 
         are accounted for by constant loss factors.
