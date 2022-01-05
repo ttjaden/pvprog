@@ -186,7 +186,11 @@ class BatProg:
         # Vorinitialisierung
         p_pvmax=np.zeros(len(time))
         KTF=np.zeros(len(time))
-        p_pvf=np.zeros((np.int64(len(time)*self.dt/900),math.ceil(self.tf_prog*4)))
+        #get a pv-prognose every 15 min or when bigger every timestep
+        if self.dt>900:
+            p_pvf=np.zeros((np.int64(len(time)),math.ceil(self.tf_prog*3600/self.dt)))
+        else:
+            p_pvf=np.zeros((np.int64(len(time)*self.dt/900),math.ceil(self.tf_prog*4)))
         # Tagesverlauf der maximalen PV-Leistungsabgabe aus den Messwerten der
         # vergangenen 10 Tage bestimmen
         for t in range(int(86400/self.dt)-1, len(time)-int(86400/self.dt), int(86400/self.dt)):
@@ -211,15 +215,20 @@ class BatProg:
         # Verhältnis von aktueller zu maximaler PV-Energie (Wetterlage-Index KTF) im Rückblickzeitfenster berechnen
         k_TF=np.divide(E_pv_past,E_max)
         KTF[~n]=k_TF
-        #15-Minutenmittelwerte von KTF und der maximalen PV-Leistungsabgabe p_pvmax
-        KTF15=np.mean(np.reshape(KTF,(int(3600/self.dt/4),int(len(time)/(3600/self.dt/4))),order='F'),axis=0)
-        p_pvmax15=np.mean(np.reshape(p_pvmax,(int(3600/self.dt/4),int(len(time)/(3600/self.dt/4))),order='F'),axis=0)
-        #Zeitreihe p_pvmax15 zweimal verketten, um zum Ende der Jahressimulation auf die Maximalwerte des Jahresanfangs zurückzugreifen
-        p_pvmax15=(np.append(p_pvmax15,p_pvmax15))
-        #Messwertbasierte PV-Prognose erstellen: Multiplikation des aktuellen KTF15-Wertes mit dem Verlauf der maximalen PV-Leistung des Prognosehorizonts
-        maxpv=max(p_pv)#maximum value vor p_pv
-        for t in range(0,len(p_pvf)):
-            p_pvf[t,:]=np.maximum(0,np.minimum(maxpv,KTF15[t]*(p_pvmax15[t:t+self.tf_prog*4])))
+        maxpv=max(p_pv)
+        if self.dt<900:
+            KTF=np.mean(np.reshape(KTF,(int(3600/self.dt/4),int(len(time)/(3600/self.dt/4))),order='F'),axis=0)
+            p_pvmax=np.mean(np.reshape(p_pvmax,(int(3600/self.dt/4),int(len(time)/(3600/self.dt/4))),order='F'),axis=0)
+            #Zeitreihe p_pvmax15 zweimal verketten, um zum Ende der Jahressimulation auf die Maximalwerte des Jahresanfangs zurückzugreifen
+            p_pvmax=(np.append(p_pvmax,p_pvmax))
+            #Messwertbasierte PV-Prognose erstellen: Multiplikation des aktuellen KTF15-Wertes mit dem Verlauf der maximalen PV-Leistung des Prognosehorizonts
+            for t in range(0,len(p_pvf)):
+                p_pvf[t,:]=np.maximum(0,np.minimum(maxpv,KTF[t]*(p_pvmax[t:t+self.tf_prog*4])))
+        else:
+            p_pvmax=(np.append(p_pvmax,p_pvmax))
+            #Messwertbasierte PV-Prognose erstellen: Multiplikation des aktuellen KTF15-Wertes mit dem Verlauf der maximalen PV-Leistung des Prognosehorizonts
+            for t in range(0,len(p_pvf)):
+                p_pvf[t,:]=np.maximum(0,np.minimum(maxpv,KTF[t]*(p_pvmax[t:t+int(self.tf_prog*3600/self.dt)])))
         # PV-Prognosen ohne Zahlenwert null setzen
         p_pvf[np.where(np.isnan(p_pvf))]=0
         return(p_pvf)
@@ -250,20 +259,28 @@ class BatProg:
         time_f: array 
             array like time with value every 15 min.
         """
-        #% Vorinitialisierung
-        P_ldf=np.zeros((int(len(time)*self.dt/900),(self.tf_prog*4)))
+        if self.dt<900:
+            #% Vorinitialisierung
+            P_ldf=np.zeros((int(len(time)*self.dt/900),(self.tf_prog*4)))
 
-        # 15 min-Zeitstempel für die Prognosen
-        time_f=time[range(0,len(time)-int(900/self.dt)+1,int(900/self.dt))]
-        # Lastprofil in 15-minütiger Auflösung ermitteln
-        P_ld15=np.mean(np.reshape(P_ld,(int(900/self.dt),int(len(time)/int(900/self.dt))),order='F'),axis=0)
-        #Gewichtungsfaktoren für die aktuelle Persistenz und Tagespersistenz über den Prognosehorizont variieren
-        g1=1/math.exp(-0.1)*np.exp(-0.1*(np.arange(self.tf_prog*4)+1))#aktuelle Persistenz
-        g2=1-g1#Tagespersistenz
-        #Messwertbasierte Lastprognose erstellen: Variable Gewichtung von aktueller Persistenz und Tagespersistenz über den Prognosehorizont
-        for t in range(96,len(time_f)):
-            P_ldf[t,:]=g1*np.full(int(self.tf_prog*4),P_ld15[t-1])+g2*P_ld15[t-96:t-96+int(self.tf_prog*4)]
-        
+            # 15 min-Zeitstempel für die Prognosen
+            time_f=time[range(0,len(time)-int(900/self.dt)+1,int(900/self.dt))]
+            # Lastprofil in 15-minütiger Auflösung ermitteln
+            P_ld15=np.mean(np.reshape(P_ld,(int(900/self.dt),int(len(time)/int(900/self.dt))),order='F'),axis=0)
+            #Gewichtungsfaktoren für die aktuelle Persistenz und Tagespersistenz über den Prognosehorizont variieren
+            g1=1/math.exp(-0.1)*np.exp(-0.1*(np.arange(self.tf_prog*4)+1))#aktuelle Persistenz
+            g2=1-g1#Tagespersistenz
+            #Messwertbasierte Lastprognose erstellen: Variable Gewichtung von aktueller Persistenz und Tagespersistenz über den Prognosehorizont
+            for t in range(96,len(time_f)):
+                P_ldf[t,:]=g1*np.full(int(self.tf_prog*4),P_ld15[t-1])+g2*P_ld15[t-96:t-96+int(self.tf_prog*4)]
+        else:
+            #% Vorinitialisierung
+            P_ldf=np.zeros((np.int64(len(time)),math.ceil(self.tf_prog*3600/self.dt)))
+            time_f=time
+            g1=1/math.exp(-0.1)*np.exp(-0.1*(np.arange(int(self.tf_prog*3600/self.dt))+1))#aktuelle Persistenz
+            g2=1-g1#Tagespersistenz
+            for t in range(int(86400/self.dt),len(time_f)):
+                P_ldf[t,:]=g1*np.full(int(self.tf_prog*3600/self.dt),P_ld[t-1])+g2*P_ld[t-int(86400/self.dt):t-int(86400/self.dt)+int(self.tf_prog*3600/self.dt)]
         return (P_ldf,time_f)
 
     def batt_prog(self,t,P_df,soc):
