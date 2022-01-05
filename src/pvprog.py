@@ -1,6 +1,9 @@
-from scipy.io import loadmat
 import numpy as np
 import math
+
+# to do
+# classes: Forecast (photovoltaic, load), Battery (schedule, control)
+# definitions without classes: evaluation
 
 class BatProg:
     def __init__(self, dt: int = 60, P_stc: int = 5, C_bu: int = 5,
