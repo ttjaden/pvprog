@@ -5,7 +5,7 @@ import math
 # classes: Forecast (photovoltaic, load), Battery (schedule, control)
 # definitions without classes: evaluation
 
-class BatProg:
+class Forecast:
     def __init__(self, dt: int = 60, P_stc: int = 5, C_bu: int = 5,
                  P_inv: float = 2.5, p_gfl: float = 0.5, eta_batt: float = 0.95,
                  eta_inv: float = 0.94, tf_past: int = 3, tf_prog: int = 15): 
@@ -42,128 +42,6 @@ class BatProg:
         self.eta_inv=eta_inv
         self.tf_past=tf_past
         self.tf_prog=tf_prog
-    
-    def batt_sim(self, P_b: float, soc_0: float):
-        """ 
-        Simple battery storage model in which conversion losses 
-        are accounted for by constant loss factors.
-        Source: J. Weniger: Dimensionierung und Netzintegration von
-        PV-Speichersystemen. Masterarbeit, Hochschule für Technik und Wirtschaft
-        HTW Berlin, 2013
-
-        Parameters
-        ----------
-        P_b : numeric
-            requestet Power of battery in this timestep (positiv: charge, negativ: discharge)
-        soc_0 : numeric (0...1)
-            Battery state of charge before this timestep
-
-        Returns
-        -------
-        P_b : numeric
-            actual power of battery in this timestep (positiv: charge, negativ: discharge)
-        soc : numeric  (0...1)
-            Battery state of charge after this timestep
-    
-         Mögliche AC-seitige Batterieleistung auf die
-         Batteriewechselrichter-Nennleistung begrenzen
-        """
-        P_b=np.maximum(-self.P_inv*1000,np.minimum(self.P_inv*1000,P_b))
-        #Batteriespeicherinhalt im Zeitschritt zuvor
-        E_b0=soc_0*self.C_bu*1000
-        if P_b>=0:# %Batterieladung
-            # Mögliche DC-seitige Batterieleistung unter Berücksichtigung des
-            # Batteriewechselrichter-Wirkungsgrads bestimmen
-            P_b=P_b*self.eta_inv
-            #Ladung
-            E_b=np.minimum(self.C_bu*1000, E_b0+self.eta_batt*P_b*self.dt/3600)
-            # Anpassung der wirklich genutzten Leistung
-            P_b=np.minimum(P_b,(self.C_bu*1000-E_b0)/(self.eta_batt*self.dt/3600))
-        
-        else:# % Batterieentladung
-            #Mögliche DC-seitige Batterieleistung unter Berücksichtigung des
-            # Batteriewechselrichter-Wirkungsgrads bestimmen
-            P_b=P_b/self.eta_inv
-            #Entladung
-            E_b=np.maximum(0, E_b0+P_b*self.dt/3600)
-            #Anpassung der wirklich genutzten Leistung
-            P_b=np.maximum(P_b,(-E_b0)/(self.dt/3600))
-
-        #Realisierte AC-seitige Batterieleistung
-        if P_b >0:#Ladung
-            P_b=P_b/self.eta_inv
-        else:#Entladung
-            P_b=P_b*self.eta_inv
-        #Ladezustand
-        soc=E_b/(self.C_bu*1000)
-        return(P_b,soc)
-
-    def simu_erg(self,P_pv,P_ld,P_b):
-        """
-        Calculation of the relative power flows and annual energy balances. 
-        The autarky level and the regulation losses are also determined.
-
-        Parameters
-        ----------
-        P_pv : array
-            PV power output in W
-        P_ld : array
-            household electrical load (load demand) in W
-        P_b : array
-            Battery power in W (positive: charge, negative: discharge)
-
-        Returns
-        -------
-        a : numeric (0...1)
-            degree of self-sufficiency
-        v : numeric  (0...1)
-            regulation losses 
-        pf : dictionary
-            with the following colums
-            P_pv: PV power output in W
-            P_ld: household electrical load (load demand) in W
-            P_d: Differential power (PV power minus household load) in W
-            P_du: Directly consumed PV power (direct usage) in W
-            P_bc: Battery charge power in W
-            P_bd: Battery discharge power in W
-            P_gf: grid feed-in power in W
-            P_gs: grid supply power in W
-            P_ct: Power of regulation losses in W
-        eb : dictionary
-            with the following colums
-            E_pv: generated PV energy in MWh/a
-            E_ld: household electricity demand (load demand) in MWh/a
-            E_du: PV energy directly consumed (direct usage) in MWh/a
-            E_bc: battery charge in MWh/a
-            E_bd: battery discharge in MWh/a
-            E_gf: grid feed-in in MWh/a
-            E_gs: grid supply in MWh/a
-            E_ct: PV energy curtailment in MWh/a
-        """
-        pf=dict()
-        pf['P_pv']=P_pv
-        pf['P_ld']=P_ld
-        pf['P_d']=P_pv-P_ld
-        pf['P_du']=np.minimum(P_pv,P_ld)
-        pf['P_bc']=np.maximum(0,P_b)
-        pf['P_bd']=abs(np.minimum(0,P_b))
-        pf['P_gf']=np.maximum(0,np.minimum(self.P_stc*1000*self.p_gfl,pf['P_d']-pf['P_bc']))
-        pf['P_gs']=abs(np.minimum(0,pf['P_d']+pf['P_bd']))
-        pf['P_ct']=P_pv-pf['P_du']-pf['P_bc']-pf['P_gf']
-
-        eb=dict()
-        eb['E_pv']=P_pv.mean()*8.76
-        eb['E_ld']=P_ld.mean()*8.76
-        eb['E_du']=pf['P_du'].mean()*8.76
-        eb['E_bc']=pf['P_bc'].mean()*8.76
-        eb['E_bd']=pf['P_bd'].mean()*8.76
-        eb['E_gf']=pf['P_gf'].mean()*8.76
-        eb['E_gs']=pf['P_gs'].mean()*8.76
-        eb['E_ct']=pf['P_ct'].mean()*8.76
-
-        a = (eb['E_du']+eb['E_bd'])/eb['E_ld']
-        v = eb['E_ct']/eb['E_pv']
-        return (a,v,pf,eb)
 
     def prog4pv(self,time,p_pv):
         """Generation of PV forecasts based on the historical measured values of 
@@ -286,122 +164,323 @@ class BatProg:
                 P_ldf[t,:]=g1*np.full(int(self.tf_prog*3600/self.dt),P_ld[t-1])+g2*P_ld[t-int(86400/self.dt):t-int(86400/self.dt)+int(self.tf_prog*3600/self.dt)]
         return (P_ldf,time_f)
 
-    def batt_prog(self,t,P_df,soc):
-        """ 
-        Creation of a schedule for the battery power over the forecast horizon of the 
-        PV and load forecast. For this purpose, the virtual feed-in limit for the 
-        period under consideration is minimized to such an extent that the excess PV 
-        energy above this limit charges the battery storage as completely as possible. 
-        
-        Source: J. Weniger, V. Quaschning: Begrenzung der Einspeiseleistung von
-        netzgekoppelten Photovoltaiksystemen mit Batteriespeichern. In: 28.
-        Symposium Photovoltaische Solarenergie. Bad Staffelstein, 2013
+    
+class Battery:
+    def __init__(self, dt, C_bu, P_stc, P_inv: float = 2.5, p_gfl: float = 0.5, eta_batt: float = 0.95,
+                 eta_inv: float = 0.94, tf_past: int = 3, tf_prog: int = 15) -> None:
+        self.C_bu=C_bu
+        self.dt=dt
+        self.P_stc=P_stc
+        self.C_bu=C_bu
+        self.P_inv=P_inv
+        self.p_gfl=p_gfl
+        self.eta_batt=eta_batt
+        self.eta_inv=eta_inv
+        self.tf_past=tf_past
+        self.tf_prog=tf_prog
 
-        Further information on forecast-based battery charge planning:
-        J. Bergner: Untersuchungen zu prognosebasierten Betriebsstrategien für
-        PV-Speichersysteme. Berlin, Hochschule für Technik und Wirtschaft
-        Berlin, Bachelorthesis, 2014 
-        
-        Parameters
-        ----------
-        t : numeric
-            Time step
-        P_df : array
-            forecast of differential power in W (P_pvf-P_ldf)
-        soc : array
-            Battery state of charge
+    def schedule(self, time, P_pv, P_ld, P_pvf, P_ldf, time_f):
+        P_b=np.zeros(len(time))
+        soc=np.zeros(len(time))
+        P_d=P_pv-P_ld
+        P_df=P_pvf-P_ldf
+        P_bf = 0
+        P_dfsel = 0
+        if self.C_bu>0:
+            for t in range(1,len(time)):
+                if self.dt>900:
+                    if sum(P_pv[t:np.minimum(t+2,len(P_pv))])>0:
+                        P_bf,P_dfsel=batt_prog(self.dt, self.C_bu, self.eta_batt, self.eta_inv, self.P_stc,self.tf_prog,self.p_gfl,t,P_df,soc)    
+                else:
+                    t_fsel=math.floor(t*self.dt/900)
+                    if (sum(P_pv[t:np.minimum(t+int(900/self.dt)+1,len(P_pv))])>0)&(time[t]==time_f[t_fsel]):
+                        P_bf,P_dfsel=batt_prog(self.dt, self.C_bu, self.eta_batt, self.eta_inv, self.P_stc,self.tf_prog,self.p_gfl,t,P_df,soc)
+                P_b[t]=err_ctrl(self.P_inv, self.P_stc, self.p_gfl,t,P_d,P_dfsel,P_bf)
+                P_b[t],soc[t]=batt_sim(self.dt, self.P_inv, self.C_bu, self.eta_batt, self.eta_inv,P_b[t],soc[t-1]) 
+        return (P_b)
 
-        Returns
-        -------
-        P_bf : array
-            forcast power of battery for the next timesteps(positiv: charge, negativ: discharge)
-        P_dfsel : array
-            forcast of differential Power at this timestep
+def batt_sim(dt, P_inv, C_bu, eta_batt, eta_inv, P_b: float, soc_0: float):
+    """ 
+    Simple battery storage model in which conversion losses 
+    are accounted for by constant loss factors.
+    Source: J. Weniger: Dimensionierung und Netzintegration von
+    PV-Speichersystemen. Masterarbeit, Hochschule für Technik und Wirtschaft
+    HTW Berlin, 2013
+
+    Parameters
+    ----------
+    P_b : numeric
+        requestet Power of battery in this timestep (positiv: charge, negativ: discharge)
+    soc_0 : numeric (0...1)
+        Battery state of charge before this timestep
+
+    Returns
+    -------
+    P_b : numeric
+        actual power of battery in this timestep (positiv: charge, negativ: discharge)
+    soc : numeric  (0...1)
+        Battery state of charge after this timestep
+
+        Mögliche AC-seitige Batterieleistung auf die
+        Batteriewechselrichter-Nennleistung begrenzen
+    """
+    P_b=np.maximum(-P_inv*1000,np.minimum(P_inv*1000,P_b))
+    #Batteriespeicherinhalt im Zeitschritt zuvor
+    E_b0=soc_0*C_bu*1000
+    if P_b>=0:# %Batterieladung
+        # Mögliche DC-seitige Batterieleistung unter Berücksichtigung des
+        # Batteriewechselrichter-Wirkungsgrads bestimmen
+        P_b=P_b*eta_inv
+        #Ladung
+        E_b=np.minimum(C_bu*1000, E_b0+eta_batt*P_b*dt/3600)
+        # Anpassung der wirklich genutzten Leistung
+        P_b=np.minimum(P_b,(C_bu*1000-E_b0)/(eta_batt*dt/3600))
+    
+    else:# % Batterieentladung
+        #Mögliche DC-seitige Batterieleistung unter Berücksichtigung des
+        # Batteriewechselrichter-Wirkungsgrads bestimmen
+        P_b=P_b/eta_inv
+        #Entladung
+        E_b=np.maximum(0, E_b0+P_b*dt/3600)
+        #Anpassung der wirklich genutzten Leistung
+        P_b=np.maximum(P_b,(-E_b0)/(dt/3600))
+
+    #Realisierte AC-seitige Batterieleistung
+    if P_b >0:#Ladung
+        P_b=P_b/eta_inv
+    else:#Entladung
+        P_b=P_b*eta_inv
+    #Ladezustand
+    soc=E_b/(C_bu*1000)
+    return(P_b,soc)
+
+def batt_prog(dt, C_bu, eta_batt, eta_inv, P_stc,tf_prog,p_gfl,t,P_df,soc):
+    """ 
+    Creation of a schedule for the battery power over the forecast horizon of the 
+    PV and load forecast. For this purpose, the virtual feed-in limit for the 
+    period under consideration is minimized to such an extent that the excess PV 
+    energy above this limit charges the battery storage as completely as possible. 
+    
+    Source: J. Weniger, V. Quaschning: Begrenzung der Einspeiseleistung von
+    netzgekoppelten Photovoltaiksystemen mit Batteriespeichern. In: 28.
+    Symposium Photovoltaische Solarenergie. Bad Staffelstein, 2013
+
+    Further information on forecast-based battery charge planning:
+    J. Bergner: Untersuchungen zu prognosebasierten Betriebsstrategien für
+    PV-Speichersysteme. Berlin, Hochschule für Technik und Wirtschaft
+    Berlin, Bachelorthesis, 2014 
+    
+    Parameters
+    ----------
+    t : numeric
+        Time step
+    P_df : array
+        forecast of differential power in W (P_pvf-P_ldf)
+    soc : array
+        Battery state of charge
+
+    Returns
+    -------
+    P_bf : array
+        forcast power of battery for the next timesteps(positiv: charge, negativ: discharge)
+    P_dfsel : array
+        forcast of differential Power at this timestep
+    
+    """
+    #aktueller Prognosezeitschritt
+    if dt>900:
+        t_fsel=t
+    else:
+        t_fsel=math.floor(t*dt/900)
+    # aktuelle Differenzleistungsprognose auswählen
+    P_dfsel=P_df[t_fsel,:]
+    # Batterieladezustand und Batterieinhalt im Zeitschritt zuvor
+    soc_0=soc[t-1]
+    E_b0=soc_0*C_bu*1000
+    # Vorbereitung der Bestimmung der aktuellen virtuellen Einspeisegrenze durch Variation der virtuellen Einspeisegrenze in 0,01 kW/kWp-Schritten
+    p_gflvir=np.reshape(np.repeat(np.arange(0,p_gfl+0.01,0.01),len(P_dfsel),0),[int(tf_prog*3600/dt),int(p_gfl*100+1)],order='F')
+    # Prognostizierte überschüssige PV-Leistung
+    P_sf=np.reshape(np.repeat(np.maximum(0,P_dfsel),p_gflvir.shape[1],0),p_gflvir.shape)
+    # Idendifikation der minimalen virtuellen Einspeisegrenze, die über den Prognosehorizont eingehalten werden soll: Dabei soll die Energiemenge 
+    #oberhalb dieser Grenze ausreichend sein, um den Batteriespeicher über den Prognosehorizont möglichst vollständig zu laden.
+    if dt>900:
+        value=(abs(np.sum(np.maximum(0,(P_sf-p_gflvir*P_stc*1000))*eta_batt*eta_inv*dt/3600,axis=0)-(C_bu*1000-E_b0)))
+    else:
+        value=(abs(np.sum(np.maximum(0,(P_sf-p_gflvir*P_stc*1000))*eta_batt*eta_inv*dt*900/dt/3600,axis=0)-(C_bu*1000-E_b0)))
+    idx=np.where(value==np.min(value))[0][0]
+    p_gflvir=p_gflvir[0,idx]
+    # Batterieladeleistung über Prognosehorizont aus virtueller Einspeisegrenze ableiten
+    P_bcf=np.maximum(0,P_dfsel-p_gflvir*P_stc*1000)
+    # Batterieleistung aus Batterieladeleistung und Differenzleistung über Prognosehorizont bestimmen
+    P_bf=np.round(np.minimum(P_bcf,P_dfsel))
+    return (P_bf,P_dfsel)
+    
+def err_ctrl(P_inv, P_stc,p_gfl,t,P_d,P_dfsel,P_bf):
+    """
+    Adjustment of the planned battery power to compensate for forecast errors. 
+    For this purpose, the forecast charging power is corrected by a control system
+    by the difference between the forecast and measured values.
+
+        Source: J. Weniger, J. Bergner, V. Quaschning: Integration of PV power
+        and load forecasts into the operation of residential PV battery systems.
+        In: 4th Solar Integration Workshop. Berlin, 2014
         
+    Parameters
+    ----------
+    t : numeric
+        Time step
+    P_d : array
+        differential power in W (P_pv-P_ld)
+    P_dfsel : array
+        forcast of differential Power at this timestep 
+    P_bf : array
+        forcast power of battery for the next timesteps(positiv: charge, negativ: discharge)
+
+    Returns
+    -------
+    P_b : numeric
+        Battery power in this timestep (positiv: charge, negativ: discharge)
         """
-        #aktueller Prognosezeitschritt
-        t_fsel=math.floor(t*self.dt/900)
-        # aktuelle Differenzleistungsprognose auswählen
-        P_dfsel=P_df[t_fsel,:]
-        # Batterieladezustand und Batterieinhalt im Zeitschritt zuvor
-        soc_0=soc[t-1]
-        E_b0=soc_0*self.C_bu*1000
-        # Vorbereitung der Bestimmung der aktuellen virtuellen Einspeisegrenze durch Variation der virtuellen Einspeisegrenze in 0,01 kW/kWp-Schritten
-        p_gflvir=np.reshape(np.repeat(np.arange(0,self.p_gfl+0.01,0.01),len(P_dfsel),0),[int(self.tf_prog*4),int(self.p_gfl*100+1)],order='F')
-        # Prognostizierte überschüssige PV-Leistung
-        P_sf=np.reshape(np.repeat(np.maximum(0,P_dfsel),p_gflvir.shape[1],0),p_gflvir.shape)
-        # Idendifikation der minimalen virtuellen Einspeisegrenze, die über den Prognosehorizont eingehalten werden soll: Dabei soll die Energiemenge 
-        #oberhalb dieser Grenze ausreichend sein, um den Batteriespeicher über den Prognosehorizont möglichst vollständig zu laden.
-        value=(abs(np.sum(np.maximum(0,(P_sf-p_gflvir*self.P_stc*1000))*self.eta_batt*self.eta_inv*self.dt*900/self.dt/3600,axis=0)-(self.C_bu*1000-E_b0)))
-        idx=np.where(value==np.min(value))[0][0]
-        p_gflvir=p_gflvir[0,idx]
-        # Batterieladeleistung über Prognosehorizont aus virtueller Einspeisegrenze ableiten
-        P_bcf=np.maximum(0,P_dfsel-p_gflvir*self.P_stc*1000)
-        # Batterieleistung aus Batterieladeleistung und Differenzleistung über Prognosehorizont bestimmen
-        P_bf=np.round(np.minimum(P_bcf,P_dfsel))
-        return (P_bf,P_dfsel)
+
+    if P_d[t]>0:#(Leistungsüberschuss)
+        """ % Anpassung der Ladeleistung, wenn die aktuelle Differenzleistung größer
+            % null und überschüssige PV-Leistung vorhanden ist
+            %
+            % Batterieladeleistung wird angepasst, wenn eine der folgenden
+            % Bedingungen erfüllt wird:
+            %
+            % (1) Die für den aktuellen Zeitschritt prognostizierte
+            % Batterieleistung ist ungleich null
+            % (2) Die aktuelle Differenzleistung ist größer als die max.
+            % prognostizierte Einspeiseleistung (virtuelle Einspeisegrenze)
+            % während des Prognosehorizonts
+            % (3) Die aktuelle Differenzleistung übersteigt die max. zulässige
+            % Einspeisegrenze"""
         
-    def err_ctrl(self,t,P_d,P_dfsel,P_bf):
-        """
-        Adjustment of the planned battery power to compensate for forecast errors. 
-        For this purpose, the forecast charging power is corrected by a control system
-        by the difference between the forecast and measured values.
+        if (P_bf[0]!=0) or (P_d[t]>np.max(P_dfsel-P_bf)) or (P_d[t]>p_gfl*P_stc*1000):
+            """ % Aktuelle Ladeleistung um die Differenz zwischen der aktuellen
+                % Differenzleistung P_d(t) und der prognostizierten Differenzleistung
+                % P_dfsel(1) korrigieren. Dadurch wird gewährleistet, dass die
+                % zuvor ermittelte virtuelle Einspeisegrenze eingehalten wird"""
+                
+            # Ladeleistung auf die Nennleistung des Batteriewechselrichters begrenzen
+            P_b=np.maximum(0,P_bf[0]+P_d[t]-P_dfsel[0])
+            # Ladeleistung auf die Nennleistung des Batteriewechselrichters begrenzen
+            P_b=np.minimum(P_inv*1000,P_b)
+        else:
+            """ % Wenn keine der zuvor aufgeführten Bedingungen erfüllt wird, soll
+                % die aktuelle Batterieladeleistung auf null gesetzt werden.
+                % Dadurch wird eine stufige Anpassung der Einspeiseleistung
+                % verhindert."""
+            P_b=0
+    else:#% P_d(t)<0 (Leistungsdefizit)
+        """ % Entladeleistung gemäß Leistungsdefizit anpassen und auf die Nennleistung des
+            % Batteriewechselrichters begrenzen."""
+        P_b=np.maximum(-P_inv*1000,P_d[t])  
+    return(P_b)
 
-         Source: J. Weniger, J. Bergner, V. Quaschning: Integration of PV power
-         and load forecasts into the operation of residential PV battery systems.
-         In: 4th Solar Integration Workshop. Berlin, 2014
-         
-        Parameters
-        ----------
-        t : numeric
-            Time step
-        P_d : array
-            differential power in W (P_pv-P_ld)
-        P_dfsel : array
-            forcast of differential Power at this timestep 
-        P_bf : array
-            forcast power of battery for the next timesteps(positiv: charge, negativ: discharge)
+def simu_erg(P_pv, P_ld, P_b, P_stc, p_gfl):
+    """
+    Calculation of the relative power flows and annual energy balances. 
+    The autarky level and the regulation losses are also determined.
 
-        Returns
-        -------
-        P_b : numeric
-            Battery power in this timestep (positiv: charge, negativ: discharge)
-         """
+    Parameters
+    ----------
+    P_pv : array
+        PV power output in W
+    P_ld : array
+        household electrical load (load demand) in W
+    P_b : array
+        Battery power in W (positive: charge, negative: discharge)
 
-        if P_d[t]>0:#(Leistungsüberschuss)
-            """ % Anpassung der Ladeleistung, wenn die aktuelle Differenzleistung größer
-                % null und überschüssige PV-Leistung vorhanden ist
-                %
-                % Batterieladeleistung wird angepasst, wenn eine der folgenden
-                % Bedingungen erfüllt wird:
-                %
-                % (1) Die für den aktuellen Zeitschritt prognostizierte
-                % Batterieleistung ist ungleich null
-                % (2) Die aktuelle Differenzleistung ist größer als die max.
-                % prognostizierte Einspeiseleistung (virtuelle Einspeisegrenze)
-                % während des Prognosehorizonts
-                % (3) Die aktuelle Differenzleistung übersteigt die max. zulässige
-                % Einspeisegrenze"""
-            
-            if (P_bf[0]!=0) or (P_d[t]>np.max(P_dfsel-P_bf)) or (P_d[t]>self.p_gfl*self.P_stc*1000):
-                """ % Aktuelle Ladeleistung um die Differenz zwischen der aktuellen
-                    % Differenzleistung P_d(t) und der prognostizierten Differenzleistung
-                    % P_dfsel(1) korrigieren. Dadurch wird gewährleistet, dass die
-                    % zuvor ermittelte virtuelle Einspeisegrenze eingehalten wird"""
-                    
-                # Ladeleistung auf die Nennleistung des Batteriewechselrichters begrenzen
-                P_b=np.maximum(0,P_bf[0]+P_d[t]-P_dfsel[0])
-                # Ladeleistung auf die Nennleistung des Batteriewechselrichters begrenzen
-                P_b=np.minimum(self.P_inv*1000,P_b)
-            else:
-                """ % Wenn keine der zuvor aufgeführten Bedingungen erfüllt wird, soll
-                    % die aktuelle Batterieladeleistung auf null gesetzt werden.
-                    % Dadurch wird eine stufige Anpassung der Einspeiseleistung
-                    % verhindert."""
-                P_b=0
-        else:#% P_d(t)<0 (Leistungsdefizit)
-            """ % Entladeleistung gemäß Leistungsdefizit anpassen und auf die Nennleistung des
-                % Batteriewechselrichters begrenzen."""
-            P_b=np.maximum(-self.P_inv*1000,P_d[t])  
-        return(P_b)
-      
+    Returns
+    -------
+    a : numeric (0...1)
+        degree of self-sufficiency
+    v : numeric  (0...1)
+        regulation losses 
+    pf : dictionary
+        with the following colums
+        P_pv: PV power output in W
+        P_ld: household electrical load (load demand) in W
+        P_d: Differential power (PV power minus household load) in W
+        P_du: Directly consumed PV power (direct usage) in W
+        P_bc: Battery charge power in W
+        P_bd: Battery discharge power in W
+        P_gf: grid feed-in power in W
+        P_gs: grid supply power in W
+        P_ct: Power of regulation losses in W
+    eb : dictionary
+        with the following colums
+        E_pv: generated PV energy in MWh/a
+        E_ld: household electricity demand (load demand) in MWh/a
+        E_du: PV energy directly consumed (direct usage) in MWh/a
+        E_bc: battery charge in MWh/a
+        E_bd: battery discharge in MWh/a
+        E_gf: grid feed-in in MWh/a
+        E_gs: grid supply in MWh/a
+        E_ct: PV energy curtailment in MWh/a
+    """
+    pf=dict()
+    pf['P_pv']=P_pv
+    pf['P_ld']=P_ld
+    pf['P_d']=P_pv-P_ld
+    pf['P_du']=np.minimum(P_pv,P_ld)
+    pf['P_bc']=np.maximum(0,P_b)
+    pf['P_bd']=abs(np.minimum(0,P_b))
+    pf['P_gf']=np.maximum(0,np.minimum(P_stc*1000*p_gfl,pf['P_d']-pf['P_bc']))
+    pf['P_gs']=abs(np.minimum(0,pf['P_d']+pf['P_bd']))
+    pf['P_ct']=P_pv-pf['P_du']-pf['P_bc']-pf['P_gf']
+
+    eb=dict()
+    eb['E_pv']=P_pv.mean()*8.76
+    eb['E_ld']=P_ld.mean()*8.76
+    eb['E_du']=pf['P_du'].mean()*8.76
+    eb['E_bc']=pf['P_bc'].mean()*8.76
+    eb['E_bd']=pf['P_bd'].mean()*8.76
+    eb['E_gf']=pf['P_gf'].mean()*8.76
+    eb['E_gs']=pf['P_gs'].mean()*8.76
+    eb['E_ct']=pf['P_ct'].mean()*8.76
+
+    a = (eb['E_du']+eb['E_bd'])/eb['E_ld']
+    v = eb['E_ct']/eb['E_pv']
+    return (a,v,pf,eb)
+
+def plot_results(eb,pf,minutes):
+    try:
+        import pandas as pd
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+    except:
+        print('Please install pandas, matplotlib.pyplot and seaborn.')
+        return(0)
+    
+    pfm= pd.DataFrame()
+    vars=['P_pv','P_ld','P_du','P_bc','P_bd','P_gf','P_gs','P_ct']
+    for i in range(0,8):
+        pfm[vars[i]]=np.mean(np.reshape(pf[vars[i]],(int(1440/minutes),365),order='F'),1)
+    pfm['time']=range(1,int(1440/minutes+1))
+    pfm['P_cta']=pfm['P_ct']+pfm['P_du']+pfm['P_bc']+pfm['P_gf']
+    pfm['P_dua']=pfm['P_du']+pfm['P_bc']+pfm['P_gf']
+    pfm['P_bca']=pfm['P_bc']+pfm['P_gf']
+
+
+    pfm['P_gs']=-pfm['P_gs']-pfm['P_bd']-pfm['P_du']
+    pfm['P_bd']=-pfm['P_bd']-pfm['P_du']
+    pfm['P_du']=-pfm['P_du']
+    sns.reset_defaults()
+    s1 = sns.barplot(x='time',y = 'P_cta',data = pfm, color = 'black',label='regulation losses')
+    s2 = sns.barplot(x='time',y = 'P_dua', data = pfm, color = 'yellow',label='direct usage')
+    s3 = sns.barplot(x='time',y = 'P_bca', data = pfm, color = 'lime',label='battery charge')
+    s4 = sns.barplot(x='time',y = 'P_gf', data = pfm, color = 'darkgrey',label='grid feed')
+    s5 = sns.barplot(x='time',y = 'P_gs', data = pfm, color = 'dimgrey',label='grid supply')
+    s6 = sns.barplot(x='time',y = 'P_bd', data = pfm, color = 'darkgreen',label='battery discharge')
+    s7 = sns.barplot(x='time',y = 'P_du', data = pfm, color = 'yellow')
+
+    plt.title('Yearly average daily power flow \n early-based battery charging', fontsize=16)
+    s1.legend()
+    #add axis titles
+    plt.xticks(range(-1,int(1440/minutes),int(1440/minutes/8)),['0:00','3:00','6:00','9:00','12:00','15:00','18:00','21:00','00:00'])
+    plt.ylabel('Power in W')
+    plt.show()
+    print(eb)
